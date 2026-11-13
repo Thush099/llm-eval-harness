@@ -1,0 +1,95 @@
+"""Integration tests for input parsing, Pipeline, error handling, and CLI."""
+
+import json
+from pathlib import Path
+import subprocess
+import sys
+
+import pytest
+
+from main import main as cli_main
+from src.pipeline import Pipeline
+from src.utils import load_data
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SAMPLE_EVAL = REPO_ROOT / "data" / "sample_eval.jsonl"
+
+
+def test_sample_eval_pipeline_ranks_grounded_above_incomplete_and_hallucinated() -> None:
+    samples = load_data(SAMPLE_EVAL)
+    assert len(samples) == 15
+
+    output = Pipeline().run(samples)
+    assert [entry.model for entry in output.leaderboard] == [
+        "grounded-rag-v2",
+        "concise-mini-v1",
+        "unconstrained-draft-v1",
+    ]
+    grounded, incomplete, hallucinated = output.leaderboard
+    assert grounded.faithfulness.mean == pytest.approx(1.0)
+    assert grounded.pass_rate == pytest.approx(1.0)
+    assert incomplete.faithfulness.mean > hallucinated.faithfulness.mean
+    assert incomplete.criterion_means["completeness"] < grounded.criterion_means["completeness"]
+    assert hallucinated.claim_summary["contradicted"] >= 4
+
+
+def test_empty_and_malformed_input_handling(tmp_path: Path) -> None:
+    empty_file = tmp_path / "empty.jsonl"
+    empty_file.write_text("", encoding="utf-8")
+    assert load_data(empty_file) == []
+
+    empty_out = Pipeline().run([])
+    assert empty_out.leaderboard == []
+    assert empty_out.evaluations == []
+    assert "No evaluation samples found" in empty_out.markdown
+
+    bad_json = tmp_path / "bad.jsonl"
+    bad_json.write_text("{not valid json\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="Malformed JSONL"):
+        load_data(bad_json)
+
+    missing_fields = tmp_path / "missing.jsonl"
+    missing_fields.write_text('{"model": "m1"}\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="missing required field"):
+        load_data(missing_fields)
+
+    with pytest.raises(FileNotFoundError):
+        load_data(tmp_path / "does_not_exist.jsonl")
+
+
+def test_cli_execution_and_file_exports(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    json_dir = tmp_path / "out_dir"
+    md_file = tmp_path / "leaderboard.md"
+
+    exit_code = cli_main([
+        "--input-data",
+        str(SAMPLE_EVAL),
+        "--output-path",
+        str(json_dir),
+        "--markdown",
+        str(md_file),
+        "--json",
+    ])
+    assert exit_code == 0
+
+    captured = capsys.readouterr()
+    stdout_payload = json.loads(captured.out)
+    assert len(stdout_payload["models"]) == 3
+    assert stdout_payload["models"][0]["model"] == "grounded-rag-v2"
+
+    assert (json_dir / "leaderboard.json").exists()
+    assert md_file.exists()
+    assert "grounded-rag-v2" in md_file.read_text(encoding="utf-8")
+
+
+def test_cli_subprocess_default_run() -> None:
+    proc = subprocess.run(
+        [sys.executable, "main.py"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "Evaluated 15 samples across 3 models." in proc.stdout
+    assert "grounded-rag-v2" in proc.stdout
+    assert "unconstrained-draft-v1" in proc.stdout

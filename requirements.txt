@@ -1,3 +1,1 @@
-argparse==1.1.0
-json==2.0.9
-logging==0.7.1
+# No third-party runtime dependencies required (Python standard library only).

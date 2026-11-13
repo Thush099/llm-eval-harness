@@ -1,38 +1,91 @@
-import logging
-from src.models import GEvalModel, FaithfulnessModel
-from src.utils import load_data
+"""End-to-end LLM evaluation pipeline orchestrating Faithfulness, G-Eval, and Leaderboard."""
 
-logger = logging.getLogger(__name__)
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Sequence
+
+from config import EvalHarnessConfig
+from src.models import (
+    FaithfulnessEvaluator,
+    GEvalScorer,
+    JudgeBackend,
+    LeaderboardEntry,
+    LeaderboardGenerator,
+    SampleEvaluation,
+)
+from src.utils import EvalSample
+
+
+@dataclass
+class EvaluationOutput:
+    """Complete result returned by Pipeline.run()."""
+
+    leaderboard: List[LeaderboardEntry]
+    evaluations: List[SampleEvaluation]
+    report_dict: Dict[str, Any]
+    markdown: str
+
 
 class Pipeline:
-    def __init__(self):
-        self.g_eval_model = GEvalModel()
-        self.faithfulness_model = FaithfulnessModel()
+    """Evaluates LLM outputs across faithfulness and G-Eval criteria."""
 
-    def run(self, data):
-        logger.info('Running G-EVAL scoring...')
-        g_eval_scores = self.g_eval_model.score(data)
-        logger.info('G-EVAL scoring completed successfully')
+    def __init__(
+        self,
+        config: Optional[EvalHarnessConfig] = None,
+        faithfulness_evaluator: Optional[FaithfulnessEvaluator] = None,
+        g_eval_scorer: Optional[GEvalScorer] = None,
+        leaderboard_generator: Optional[LeaderboardGenerator] = None,
+        judge_backend: Optional[JudgeBackend] = None,
+    ) -> None:
+        self.config = config or EvalHarnessConfig()
+        self.faithfulness_evaluator = faithfulness_evaluator or FaithfulnessEvaluator(
+            support_threshold=self.config.faithfulness_support_threshold,
+        )
+        self.g_eval_scorer = g_eval_scorer or GEvalScorer(
+            weights=self.config.rubric_weights,
+            backend=judge_backend,
+        )
+        self.leaderboard_generator = leaderboard_generator or LeaderboardGenerator(
+            faithfulness_threshold=self.config.faithfulness_threshold,
+            geval_threshold=self.config.geval_threshold,
+            faithfulness_weight=self.config.composite_faithfulness_weight,
+            geval_weight=self.config.composite_geval_weight,
+        )
 
-        logger.info('Running faithfulness scoring...')
-        faithfulness_scores = self.faithfulness_model.score(data)
-        logger.info('Faithfulness scoring completed successfully')
+    def evaluate_samples(self, samples: Sequence[EvalSample]) -> List[SampleEvaluation]:
+        """Run faithfulness and G-Eval scoring for each sample."""
+        evaluations: List[SampleEvaluation] = []
+        for sample in samples:
+            faith_res = self.faithfulness_evaluator.score(sample)
+            geval_res = self.g_eval_scorer.score(sample)
+            passed = self.leaderboard_generator.is_passing(
+                faithfulness_score=faith_res.score,
+                geval_score=geval_res.overall_score,
+            )
+            evaluations.append(
+                SampleEvaluation(
+                    sample_id=sample.sample_id,
+                    model=sample.model,
+                    question=sample.question,
+                    faithfulness=faith_res,
+                    g_eval=geval_res,
+                    passed=passed,
+                )
+            )
+        return evaluations
 
-        logger.info('Generating leaderboard...')
-        leaderboard = self.generate_leaderboard(g_eval_scores, faithfulness_scores)
-        logger.info('Leaderboard generated successfully')
-
-        return leaderboard
-
-    def generate_leaderboard(self, g_eval_scores, faithfulness_scores):
-        leaderboard = []
-        for i in range(len(g_eval_scores)):
-            model_name = f'Model {i+1}'
-            g_eval_score = g_eval_scores[i]
-            faithfulness_score = faithfulness_scores[i]
-            leaderboard.append({
-                'name': model_name,
-                'g-eval-score': g_eval_score,
-                'faithfulness-score': faithfulness_score
-            })
-        return leaderboard
+    def run(self, samples: Sequence[EvalSample]) -> EvaluationOutput:
+        """Evaluate samples and build structured leaderboard outputs."""
+        evaluations = self.evaluate_samples(samples)
+        leaderboard = self.leaderboard_generator.aggregate(evaluations)
+        report_dict = self.leaderboard_generator.to_dict(
+            leaderboard, evaluations=evaluations
+        )
+        markdown = self.leaderboard_generator.to_markdown(leaderboard)
+        return EvaluationOutput(
+            leaderboard=leaderboard,
+            evaluations=evaluations,
+            report_dict=report_dict,
+            markdown=markdown,
+        )
