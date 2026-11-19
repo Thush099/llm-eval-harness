@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from config import EvalHarnessConfig
 from src.models import (
     FaithfulnessResult,
     GEvalResult,
@@ -13,6 +14,25 @@ from src.models import (
     LeaderboardGenerator,
     SampleEvaluation,
 )
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"faithfulness_threshold": float("nan")},
+        {"geval_threshold": 1.1},
+        {"faithfulness_support_threshold": -0.1},
+        {"composite_geval_weight": float("inf")},
+        {"composite_faithfulness_weight": 0.0, "composite_geval_weight": 0.0},
+        {"composite_faithfulness_weight": 1e308, "composite_geval_weight": 1e308},
+        {"rubric_weights": {"coherence": float("nan")}},
+        {"rubric_weights": {"coherence": 1e308, "relevance": 1e308}},
+        {"rubric_weights": {"coherence": 0.0}},
+    ],
+)
+def test_eval_harness_config_rejects_invalid_scoring_settings(overrides: dict[str, object]) -> None:
+    with pytest.raises(ValueError):
+        EvalHarnessConfig(**overrides)  # type: ignore[arg-type]
 
 
 def test_geval_completeness_relevance_and_conciseness_discrimination() -> None:
@@ -44,6 +64,33 @@ def test_geval_completeness_relevance_and_conciseness_discrimination() -> None:
     assert r_complete.criterion_scores["conciseness"] > r_bloated.criterion_scores["conciseness"]
     assert r_complete.overall_score > r_incomplete.overall_score
     assert r_complete.overall_score > r_off_topic.overall_score
+
+
+@pytest.mark.parametrize("invalid_score", [float("nan"), float("inf"), float("-inf")])
+def test_geval_rejects_non_finite_backend_scores(invalid_score: float) -> None:
+    class InvalidBackend:
+        def score_criterion(
+            self, criterion, rubric_description, question, response, context, reference_answer=None
+        ):
+            return invalid_score
+
+    scorer = GEvalScorer(weights={"coherence": 1.0}, backend=InvalidBackend())
+
+    with pytest.raises(ValueError, match="non-finite score"):
+        scorer.evaluate("question", "response")
+
+
+@pytest.mark.parametrize(
+    "weights",
+    [
+        {"coherence": float("nan")},
+        {"coherence": float("inf")},
+        {"coherence": 1e308, "relevance": 1e308},
+    ],
+)
+def test_geval_rejects_non_finite_or_overflowing_weights(weights: dict[str, float]) -> None:
+    with pytest.raises(ValueError, match="finite"):
+        GEvalScorer(weights=weights)
 
 
 def test_geval_custom_weights_and_pluggable_backend() -> None:

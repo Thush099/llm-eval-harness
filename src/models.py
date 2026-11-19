@@ -555,12 +555,12 @@ class GEvalScorer:
         raw_weights = dict(weights) if weights is not None else default_rubric_weights()
         if not raw_weights:
             raise ValueError("Rubric weights cannot be empty.")
-        if any(w < 0.0 for w in raw_weights.values()):
-            raise ValueError("Rubric weights must be non-negative.")
+        if any(not math.isfinite(weight) or weight < 0.0 for weight in raw_weights.values()):
+            raise ValueError("Rubric weights must be finite and non-negative.")
 
         total_weight = sum(raw_weights.values())
-        if total_weight <= 0.0:
-            raise ValueError("Sum of rubric weights must be strictly positive.")
+        if not math.isfinite(total_weight) or total_weight <= 0.0:
+            raise ValueError("Sum of rubric weights must be finite and strictly positive.")
 
         self.weights: Dict[str, float] = {
             k: float(v) / total_weight for k, v in raw_weights.items()
@@ -595,6 +595,8 @@ class GEvalScorer:
                     reference_answer=reference_answer,
                 )
             )
+            if not math.isfinite(raw_score):
+                raise ValueError(f"Judge backend returned a non-finite score for '{criterion}'.")
             clamped = max(0.0, min(1.0, raw_score))
             criterion_scores[criterion] = clamped
             overall += weight * clamped
