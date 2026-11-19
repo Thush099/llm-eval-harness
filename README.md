@@ -64,6 +64,7 @@ Supported CLI options:
 - `--json`: Print structured JSON output to stdout
 - `--faithfulness-threshold`: Minimum faithfulness score for passing (default: `0.70`)
 - `--geval-threshold`: Minimum G-Eval score for passing (default: `0.60`)
+- `--min-composite FLOAT`: Exit non-zero when any model's composite score is below `FLOAT`, so the harness can gate a CI job against score regressions. The value must be finite and in `[0, 1]`; invalid values are rejected rather than silently disabling the gate.
 
 ### Sample CLI Output
 

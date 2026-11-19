@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import math
 from pathlib import Path
 from typing import Optional, Sequence
 
 from config import EvalHarnessConfig
+from src.models import LeaderboardEntry
 from src.pipeline import Pipeline
 from src.utils import load_data
 
@@ -54,7 +56,34 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.60,
         help="Minimum G-Eval score required for a sample to pass.",
     )
+    parser.add_argument(
+        "--min-composite",
+        type=float,
+        default=None,
+        help=(
+            "Exit non-zero when any model's composite leaderboard score is below "
+            "this threshold in [0, 1], so the harness can gate a CI job."
+        ),
+    )
     return parser
+
+
+def exit_code_for(leaderboard: Sequence[LeaderboardEntry], min_composite: Optional[float]) -> int:
+    """Map a leaderboard to a process exit code under a score gate.
+
+    Returns 0 when no threshold is given or every model meets it, and 1 when any
+    model's composite score is below the threshold. The threshold must be a
+    finite value in [0, 1]; anything else raises ``ValueError`` so a typo cannot
+    silently disable gating.
+    """
+    if min_composite is None:
+        return 0
+    if not math.isfinite(min_composite) or not 0.0 <= min_composite <= 1.0:
+        raise ValueError(
+            "min_composite must be a finite value in [0, 1]; "
+            f"got {min_composite!r}"
+        )
+    return 1 if any(entry.composite_score < min_composite for entry in leaderboard) else 0
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -96,7 +125,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"Evaluated {len(samples)} samples across {len(output.leaderboard)} models.\n"
         )
         print(pipeline.leaderboard_generator.format_console_table(output.leaderboard))
-    return 0
+    return exit_code_for(output.leaderboard, args.min_composite)
 
 
 if __name__ == "__main__":

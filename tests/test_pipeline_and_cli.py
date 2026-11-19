@@ -93,3 +93,47 @@ def test_cli_subprocess_default_run() -> None:
     assert "Evaluated 15 samples across 3 models." in proc.stdout
     assert "grounded-rag-v2" in proc.stdout
     assert "unconstrained-draft-v1" in proc.stdout
+
+
+def _entry(composite: float):
+    from src.models import LeaderboardEntry, MetricStats
+
+    stats = MetricStats(mean=0.0, min=0.0, max=0.0)
+    return LeaderboardEntry(
+        rank=1,
+        model="m",
+        sample_count=1,
+        composite_score=composite,
+        pass_rate=0.0,
+        faithfulness=stats,
+        g_eval=stats,
+        criterion_means={},
+    )
+
+
+def test_exit_code_no_threshold_always_succeeds() -> None:
+    from main import exit_code_for
+
+    assert exit_code_for([_entry(0.0)], None) == 0
+
+
+def test_exit_code_gates_on_min_composite() -> None:
+    from main import exit_code_for
+
+    assert exit_code_for([_entry(0.4)], 0.5) == 1
+    assert exit_code_for([_entry(0.5)], 0.5) == 0
+    assert exit_code_for([_entry(0.9), _entry(0.4)], 0.5) == 1
+    assert exit_code_for([], 0.5) == 0
+
+
+def test_exit_code_rejects_invalid_threshold() -> None:
+    from main import exit_code_for
+
+    for bad in (float("nan"), float("inf"), -0.1, 1.5):
+        with pytest.raises(ValueError, match="min_composite must be a finite value"):
+            exit_code_for([_entry(1.0)], bad)
+
+
+def test_cli_min_composite_gates_the_run() -> None:
+    assert cli_main(["--min-composite", "0.0"]) == 0
+    assert cli_main(["--min-composite", "1.0"]) == 1
