@@ -702,9 +702,22 @@ class LeaderboardGenerator:
         faithfulness_weight: float = 0.50,
         geval_weight: float = 0.50,
     ) -> None:
+        for name, value in (
+            ("faithfulness_threshold", faithfulness_threshold),
+            ("geval_threshold", geval_threshold),
+        ):
+            if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be finite and in [0, 1]")
+
+        for name, value in (
+            ("faithfulness_weight", faithfulness_weight),
+            ("geval_weight", geval_weight),
+        ):
+            if not math.isfinite(value) or value < 0.0:
+                raise ValueError(f"{name} must be finite and non-negative")
         total_w = faithfulness_weight + geval_weight
-        if total_w <= 0.0:
-            raise ValueError("Composite score weights must sum to a positive value.")
+        if not math.isfinite(total_w) or total_w <= 0.0:
+            raise ValueError("Composite score weights must sum to a finite positive value.")
         self.faithfulness_threshold = faithfulness_threshold
         self.geval_threshold = geval_threshold
         self.faithfulness_weight = faithfulness_weight / total_w

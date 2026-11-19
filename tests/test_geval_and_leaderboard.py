@@ -123,6 +123,25 @@ def test_geval_custom_weights_and_pluggable_backend() -> None:
         GEvalScorer(weights={"coherence": -0.5})
 
 
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"faithfulness_threshold": float("nan")},
+        {"faithfulness_threshold": 1.1},
+        {"geval_threshold": -0.1},
+        {"faithfulness_weight": float("inf")},
+        {"faithfulness_weight": -1.0},
+        {"faithfulness_weight": 1e308, "geval_weight": 1e308},
+        {"faithfulness_weight": 0.0, "geval_weight": 0.0},
+    ],
+)
+def test_leaderboard_generator_rejects_invalid_thresholds_and_weights(
+    kwargs: dict[str, float],
+) -> None:
+    with pytest.raises(ValueError):
+        LeaderboardGenerator(**kwargs)
+
+
 def test_leaderboard_aggregation_math_and_exports(tmp_path: Path) -> None:
     gen = LeaderboardGenerator(faithfulness_threshold=0.75, geval_threshold=0.70)
 
