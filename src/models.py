@@ -114,9 +114,27 @@ class FaithfulnessEvaluator:
         alignment_threshold: float = 0.25,
         contradiction_penalty: float = 0.20,
     ) -> None:
-        self.support_threshold = support_threshold
-        self.alignment_threshold = alignment_threshold
-        self.contradiction_penalty = contradiction_penalty
+        for name, value in (
+            ("support_threshold", support_threshold),
+            ("alignment_threshold", alignment_threshold),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or not 0.0 <= value <= 1.0
+            ):
+                raise ValueError(f"{name} must be finite and in [0, 1].")
+        if (
+            isinstance(contradiction_penalty, bool)
+            or not isinstance(contradiction_penalty, (int, float))
+            or not math.isfinite(contradiction_penalty)
+            or contradiction_penalty < 0.0
+        ):
+            raise ValueError("contradiction_penalty must be finite and non-negative.")
+        self.support_threshold = float(support_threshold)
+        self.alignment_threshold = float(alignment_threshold)
+        self.contradiction_penalty = float(contradiction_penalty)
 
     def _compute_overlap(
         self,
@@ -706,14 +724,24 @@ class LeaderboardGenerator:
             ("faithfulness_threshold", faithfulness_threshold),
             ("geval_threshold", geval_threshold),
         ):
-            if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or not 0.0 <= value <= 1.0
+            ):
                 raise ValueError(f"{name} must be finite and in [0, 1]")
 
         for name, value in (
             ("faithfulness_weight", faithfulness_weight),
             ("geval_weight", geval_weight),
         ):
-            if not math.isfinite(value) or value < 0.0:
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value < 0.0
+            ):
                 raise ValueError(f"{name} must be finite and non-negative")
         total_w = faithfulness_weight + geval_weight
         if not math.isfinite(total_w) or total_w <= 0.0:

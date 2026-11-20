@@ -133,6 +133,9 @@ def test_geval_custom_weights_and_pluggable_backend() -> None:
         {"faithfulness_weight": -1.0},
         {"faithfulness_weight": 1e308, "geval_weight": 1e308},
         {"faithfulness_weight": 0.0, "geval_weight": 0.0},
+        {"faithfulness_threshold": True},
+        {"geval_threshold": "x"},
+        {"faithfulness_weight": None},
     ],
 )
 def test_leaderboard_generator_rejects_invalid_thresholds_and_weights(
