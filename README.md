@@ -7,13 +7,13 @@ A modular, deterministic evaluation harness for Large Language Model (LLM) and R
 - **Claim-Level Faithfulness (`FaithfulnessEvaluator`)**:
   - Splits model responses into atomic claims and clauses while preserving decimals and abbreviations.
   - Compares each claim against reference context passages using stemmed token coverage, bigram overlap, and smoothed IDF weighting.
-  - Detects **numeric contradictions** (e.g., hallucinated dates, metrics, or parameters) and **negation/contrast polarity or antonym conflicts**, assigning per-claim verdicts (`supported`, `unsupported`, `contradicted`) and an overall faithfulness score in `[0.0, 1.0]`.
+  - Detects **numeric contradictions** (e.g., hallucinated dates, metrics, or parameters) and **negation/contrast polarity or antonym conflicts**, assigning per-claim verdicts (`supported`, `unsupported`, `contradicted`) and an overall faithfulness score in `[0.0, 1.0]`. Scoring thresholds (`support_threshold`, `alignment_threshold`) are validated as finite and in `[0.0, 1.0]`, and `contradiction_penalty` as finite and non-negative.
 - **Configurable G-Eval Rubric Scoring (`GEvalScorer`)**:
   - Evaluates `coherence`, `relevance`, `conciseness`, and `completeness` with customizable rubric weights.
   - Ships with a deterministic offline `LocalHeuristicJudgeBackend` and a clean `JudgeBackend` protocol for plugging in OpenAI, Ollama, or local LLM judges with zero hardcoded credentials.
 - **Leaderboard Aggregation & Export (`LeaderboardGenerator`)**:
   - Aggregates per-model `mean`, `min`, `max`, `pass_rate`, composite rank, rubric criterion breakdowns, and `supported/unsupported/contradicted` claim totals.
-  - Exports structured JSON (`leaderboard.json`), formatted Markdown tables, and aligned console tables.
+  - Exports structured JSON (`leaderboard.json`), formatted Markdown tables, and aligned console tables. Aggregation weights and ranking thresholds are validated (finite, non-negative weights summing to a positive total; thresholds finite and in `[0, 1]`).
 - **Bundled Sample Dataset**: Includes `data/sample_eval.jsonl` comparing 3 models (`grounded-rag-v2`, `concise-mini-v1`, `unconstrained-draft-v1`) across 5 QA prompts covering grounded, incomplete, and hallucinated-number responses.
 
 ## Architecture
@@ -64,6 +64,7 @@ Supported CLI options:
 - `--json`: Print structured JSON output to stdout
 - `--faithfulness-threshold`: Minimum faithfulness score for passing (default: `0.70`)
 - `--geval-threshold`: Minimum G-Eval score for passing (default: `0.60`)
+- `--min-composite FLOAT`: Exit non-zero when any model's composite score is below `FLOAT`, so the harness can gate a CI job against score regressions. The value must be finite and in `[0, 1]`; invalid values are rejected rather than silently disabling the gate.
 
 ### Sample CLI Output
 

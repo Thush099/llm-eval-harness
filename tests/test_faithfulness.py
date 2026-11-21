@@ -1,6 +1,42 @@
 """Unit tests for FaithfulnessEvaluator claim verification, numbers, and polarity."""
 
+import pytest
+
 from src.models import FaithfulnessEvaluator
+
+
+@pytest.mark.parametrize(
+    "attr", ["support_threshold", "alignment_threshold", "contradiction_penalty"]
+)
+@pytest.mark.parametrize(
+    "value", [float("nan"), float("inf"), float("-inf"), "x", None, True]
+)
+def test_faithfulness_evaluator_rejects_invalid_threshold(attr: str, value: object) -> None:
+    with pytest.raises(ValueError, match=attr):
+        FaithfulnessEvaluator(**{attr: value})
+
+
+@pytest.mark.parametrize("attr", ["support_threshold", "alignment_threshold"])
+@pytest.mark.parametrize("value", [-0.1, 1.5])
+def test_faithfulness_evaluator_rejects_out_of_range_score_threshold(
+    attr: str, value: float
+) -> None:
+    with pytest.raises(ValueError, match=attr):
+        FaithfulnessEvaluator(**{attr: value})
+
+
+def test_faithfulness_evaluator_rejects_negative_contradiction_penalty() -> None:
+    with pytest.raises(ValueError, match="contradiction_penalty"):
+        FaithfulnessEvaluator(contradiction_penalty=-0.1)
+
+
+def test_faithfulness_evaluator_accepts_valid_thresholds() -> None:
+    evaluator = FaithfulnessEvaluator(
+        support_threshold=0.0, alignment_threshold=1.0, contradiction_penalty=2.5
+    )
+    assert evaluator.support_threshold == 0.0
+    assert evaluator.alignment_threshold == 1.0
+    assert evaluator.contradiction_penalty == 2.5
 
 
 def test_grounded_answer_scores_higher_than_hallucinated_numbers_and_ungrounded_claims() -> None:

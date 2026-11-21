@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from config import EvalHarnessConfig
 from src.models import (
     FaithfulnessResult,
     GEvalResult,
@@ -13,6 +14,25 @@ from src.models import (
     LeaderboardGenerator,
     SampleEvaluation,
 )
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"faithfulness_threshold": float("nan")},
+        {"geval_threshold": 1.1},
+        {"faithfulness_support_threshold": -0.1},
+        {"composite_geval_weight": float("inf")},
+        {"composite_faithfulness_weight": 0.0, "composite_geval_weight": 0.0},
+        {"composite_faithfulness_weight": 1e308, "composite_geval_weight": 1e308},
+        {"rubric_weights": {"coherence": float("nan")}},
+        {"rubric_weights": {"coherence": 1e308, "relevance": 1e308}},
+        {"rubric_weights": {"coherence": 0.0}},
+    ],
+)
+def test_eval_harness_config_rejects_invalid_scoring_settings(overrides: dict[str, object]) -> None:
+    with pytest.raises(ValueError):
+        EvalHarnessConfig(**overrides)  # type: ignore[arg-type]
 
 
 def test_geval_completeness_relevance_and_conciseness_discrimination() -> None:
@@ -46,6 +66,33 @@ def test_geval_completeness_relevance_and_conciseness_discrimination() -> None:
     assert r_complete.overall_score > r_off_topic.overall_score
 
 
+@pytest.mark.parametrize("invalid_score", [float("nan"), float("inf"), float("-inf")])
+def test_geval_rejects_non_finite_backend_scores(invalid_score: float) -> None:
+    class InvalidBackend:
+        def score_criterion(
+            self, criterion, rubric_description, question, response, context, reference_answer=None
+        ):
+            return invalid_score
+
+    scorer = GEvalScorer(weights={"coherence": 1.0}, backend=InvalidBackend())
+
+    with pytest.raises(ValueError, match="non-finite score"):
+        scorer.evaluate("question", "response")
+
+
+@pytest.mark.parametrize(
+    "weights",
+    [
+        {"coherence": float("nan")},
+        {"coherence": float("inf")},
+        {"coherence": 1e308, "relevance": 1e308},
+    ],
+)
+def test_geval_rejects_non_finite_or_overflowing_weights(weights: dict[str, float]) -> None:
+    with pytest.raises(ValueError, match="finite"):
+        GEvalScorer(weights=weights)
+
+
 def test_geval_custom_weights_and_pluggable_backend() -> None:
     class FixedBackend:
         def score_criterion(self, criterion, rubric_description, question, response, context, reference_answer=None):
@@ -74,6 +121,28 @@ def test_geval_custom_weights_and_pluggable_backend() -> None:
         GEvalScorer(weights={})
     with pytest.raises(ValueError):
         GEvalScorer(weights={"coherence": -0.5})
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"faithfulness_threshold": float("nan")},
+        {"faithfulness_threshold": 1.1},
+        {"geval_threshold": -0.1},
+        {"faithfulness_weight": float("inf")},
+        {"faithfulness_weight": -1.0},
+        {"faithfulness_weight": 1e308, "geval_weight": 1e308},
+        {"faithfulness_weight": 0.0, "geval_weight": 0.0},
+        {"faithfulness_threshold": True},
+        {"geval_threshold": "x"},
+        {"faithfulness_weight": None},
+    ],
+)
+def test_leaderboard_generator_rejects_invalid_thresholds_and_weights(
+    kwargs: dict[str, float],
+) -> None:
+    with pytest.raises(ValueError):
+        LeaderboardGenerator(**kwargs)
 
 
 def test_leaderboard_aggregation_math_and_exports(tmp_path: Path) -> None:

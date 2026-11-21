@@ -114,9 +114,27 @@ class FaithfulnessEvaluator:
         alignment_threshold: float = 0.25,
         contradiction_penalty: float = 0.20,
     ) -> None:
-        self.support_threshold = support_threshold
-        self.alignment_threshold = alignment_threshold
-        self.contradiction_penalty = contradiction_penalty
+        for name, value in (
+            ("support_threshold", support_threshold),
+            ("alignment_threshold", alignment_threshold),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or not 0.0 <= value <= 1.0
+            ):
+                raise ValueError(f"{name} must be finite and in [0, 1].")
+        if (
+            isinstance(contradiction_penalty, bool)
+            or not isinstance(contradiction_penalty, (int, float))
+            or not math.isfinite(contradiction_penalty)
+            or contradiction_penalty < 0.0
+        ):
+            raise ValueError("contradiction_penalty must be finite and non-negative.")
+        self.support_threshold = float(support_threshold)
+        self.alignment_threshold = float(alignment_threshold)
+        self.contradiction_penalty = float(contradiction_penalty)
 
     def _compute_overlap(
         self,
@@ -555,12 +573,12 @@ class GEvalScorer:
         raw_weights = dict(weights) if weights is not None else default_rubric_weights()
         if not raw_weights:
             raise ValueError("Rubric weights cannot be empty.")
-        if any(w < 0.0 for w in raw_weights.values()):
-            raise ValueError("Rubric weights must be non-negative.")
+        if any(not math.isfinite(weight) or weight < 0.0 for weight in raw_weights.values()):
+            raise ValueError("Rubric weights must be finite and non-negative.")
 
         total_weight = sum(raw_weights.values())
-        if total_weight <= 0.0:
-            raise ValueError("Sum of rubric weights must be strictly positive.")
+        if not math.isfinite(total_weight) or total_weight <= 0.0:
+            raise ValueError("Sum of rubric weights must be finite and strictly positive.")
 
         self.weights: Dict[str, float] = {
             k: float(v) / total_weight for k, v in raw_weights.items()
@@ -595,6 +613,8 @@ class GEvalScorer:
                     reference_answer=reference_answer,
                 )
             )
+            if not math.isfinite(raw_score):
+                raise ValueError(f"Judge backend returned a non-finite score for '{criterion}'.")
             clamped = max(0.0, min(1.0, raw_score))
             criterion_scores[criterion] = clamped
             overall += weight * clamped
@@ -700,9 +720,32 @@ class LeaderboardGenerator:
         faithfulness_weight: float = 0.50,
         geval_weight: float = 0.50,
     ) -> None:
+        for name, value in (
+            ("faithfulness_threshold", faithfulness_threshold),
+            ("geval_threshold", geval_threshold),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or not 0.0 <= value <= 1.0
+            ):
+                raise ValueError(f"{name} must be finite and in [0, 1]")
+
+        for name, value in (
+            ("faithfulness_weight", faithfulness_weight),
+            ("geval_weight", geval_weight),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value < 0.0
+            ):
+                raise ValueError(f"{name} must be finite and non-negative")
         total_w = faithfulness_weight + geval_weight
-        if total_w <= 0.0:
-            raise ValueError("Composite score weights must sum to a positive value.")
+        if not math.isfinite(total_w) or total_w <= 0.0:
+            raise ValueError("Composite score weights must sum to a finite positive value.")
         self.faithfulness_threshold = faithfulness_threshold
         self.geval_threshold = geval_threshold
         self.faithfulness_weight = faithfulness_weight / total_w
