@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLM Eval Leaderboard — faithfulness &amp; G-Eval</title>
+<style>
+  :root {
+    --bg: #101418;
+    --panel: #171c21;
+    --panel-2: #1d2429;
+    --ink: #e8ecef;
+    --ink-soft: #95a0a8;
+    --rule: #293238;
+    --gold: #e0b64a;
+    --good: #4cc38a;
+    --bad: #ff6b5e;
+    --accent: #63c7da;
+    --mono: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 var(--sans); }
+  header { padding: 30px 26px 20px; border-bottom: 1px solid var(--rule);
+           background: linear-gradient(180deg, #161b20, var(--bg)); }
+  header h1 { margin: 0; font: 600 clamp(22px, 3.4vw, 32px)/1.12 var(--sans); letter-spacing: -.015em; }
+  header h1 em { font-style: normal; color: var(--gold); }
+  header p { margin: 9px 0 0; max-width: 70ch; color: var(--ink-soft); font-size: 14.5px; }
+  .layout { display: grid; grid-template-columns: minmax(300px, 350px) 1fr; gap: 20px; padding: 20px 26px 56px; }
+  @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 18px 20px; }
+  .panel + .panel { margin-top: 16px; }
+  .panel h2 { margin: 0 0 3px; font: 600 17px/1.25 var(--sans); }
+  .meta { margin: 0 0 12px; color: var(--ink-soft); font-size: 12.5px; }
+  label { display: block; font: 600 11px/1 var(--sans); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-soft); margin: 13px 0 6px; }
+  textarea, input[type="number"] {
+    width: 100%; border: 1px solid var(--rule); border-radius: 4px; background: var(--panel-2);
+    color: var(--ink); font: 12.5px/1.5 var(--mono); padding: 8px 10px;
+  }
+  textarea { resize: vertical; min-height: 160px; }
+  textarea:focus-visible, input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .btnrow { display: flex; gap: 10px; margin-top: 16px; }
+  button { flex: 1; border: 0; border-radius: 4px; cursor: pointer; padding: 12px 14px; font: 600 14px/1 var(--sans); }
+  button.primary { background: var(--accent); color: #08202a; }
+  button.primary:hover { background: #4fb3c6; }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button:disabled { opacity: .55; cursor: wait; }
+  .error { margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--bad); background: #2a1c1a; color: var(--bad); font-size: 13px; white-space: pre-wrap; }
+
+  .rank-row { display: grid; grid-template-columns: 54px 1fr; gap: 16px; align-items: center;
+              padding: 18px 20px; border: 1px solid var(--rule); border-radius: 6px; background: var(--panel); }
+  .rank-row + .rank-row { margin-top: 12px; }
+  .rank-row.first { border-color: var(--gold); background: linear-gradient(180deg, #22211a, var(--panel)); }
+  .rank-num { font: 600 34px/1 var(--sans); color: var(--ink-soft); text-align: center; font-variant-numeric: tabular-nums; }
+  .rank-row.first .rank-num { color: var(--gold); }
+  .model-name { font: 600 18px/1.2 var(--sans); }
+  .score-line { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 8px; }
+  .score-line .metric .k { font: 600 10px/1 var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); }
+  .score-line .metric .v { font: 600 19px/1.15 var(--mono); margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .v.good { color: var(--good); } .v.bad { color: var(--bad); }
+  .bars { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 12px; }
+  .bar-item .k { font-size: 11px; color: var(--ink-soft); }
+  .bar-track { height: 6px; border-radius: 3px; background: var(--panel-2); margin-top: 5px; overflow: hidden; }
+  .bar-track i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+  .bar-item .val { font: 11px var(--mono); color: var(--ink-soft); margin-top: 3px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); }
+  th { font: 600 10.5px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; color: var(--ink-soft); background: var(--panel-2); }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .wrap { overflow-x: auto; }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; font-size: 12.5px; color: var(--accent); font-weight: 600; }
+  pre { background: #0c0f12; color: #d6dae0; padding: 12px; border-radius: 4px; overflow: auto; font: 11px/1.5 var(--mono); max-height: 300px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>LLM eval <em>leaderboard</em></h1>
+  <p>Score model responses with the real harness: claim-level faithfulness against the provided
+  context and rubric-weighted G-Eval (coherence, relevance, conciseness, completeness), rolled
+  into a composite score and pass rate per model.</p>
+</header>
+
+<div class="layout">
+  <form class="panel" id="form">
+    <h2>Samples</h2>
+    <p class="meta">Runs <code>Pipeline.run()</code> from <code>src/pipeline.py</code>.</p>
+
+    <label for="samples">Evaluation samples (JSONL)</label>
+    <textarea id="samples" placeholder='{"model": "m1", "question": "…", "context": ["…"], "response": "…"}'></textarea>
+    <div class="btnrow">
+      <button type="button" class="ghost" id="load-sample">Load sample data</button>
+    </div>
+
+    <label for="faith_thresh">Faithfulness threshold</label>
+    <input type="number" id="faith_thresh" value="0.7" step="0.05" min="0" max="1">
+    <label for="geval_thresh">G-Eval threshold</label>
+    <input type="number" id="geval_thresh" value="0.7" step="0.05" min="0" max="1">
+
+    <div class="btnrow">
+      <button type="submit" class="primary" id="run">Run evaluation</button>
+    </div>
+    <div class="error" id="error" hidden></div>
+  </form>
+
+  <section>
+    <div class="panel" id="count-panel" hidden>
+      <p class="meta" id="count-meta"></p>
+    </div>
+    <div id="leaderboard"></div>
+
+    <div class="panel" id="table-panel" hidden>
+      <h2>Score table</h2>
+      <div class="wrap"><table id="score-table"></table></div>
+    </div>
+
+    <details id="raw-details" hidden>
+      <summary>Show raw JSON result</summary>
+      <pre id="raw"></pre>
+    </details>
+  </section>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const num = (x, d = 3) => x == null ? "—" : Number(x).toFixed(d);
+
+  function renderLeaderboard(rows) {
+    $("leaderboard").innerHTML = rows.map((e, i) => {
+      const critBars = Object.entries(e.criterion_means || {}).map(([k, v]) =>
+        `<div class="bar-item"><div class="k">${esc(k)}</div>
+         <div class="bar-track"><i style="width:${Math.max(2, 100 * v)}%"></i></div>
+         <div class="val">${num(v)}</div></div>`).join("");
+      const claims = e.claim_summary || {};
+      const claimText = Object.entries(claims).map(([k, v]) => `${v} ${k}`).join(" · ");
+      return `<div class="rank-row ${i === 0 ? "first" : ""}">
+        <div class="rank-num">#${e.rank}</div>
+        <div>
+          <div class="model-name">${esc(e.model)}</div>
+          <div class="score-line">
+            <div class="metric"><div class="k">Composite</div><div class="v ${e.composite_score >= 0.7 ? "good" : "bad"}">${num(e.composite_score)}</div></div>
+            <div class="metric"><div class="k">Faithfulness</div><div class="v ${e.faithfulness.mean >= 0.7 ? "good" : "bad"}">${num(e.faithfulness.mean)}</div></div>
+            <div class="metric"><div class="k">G-Eval</div><div class="v ${e.g_eval.mean >= 0.7 ? "good" : "bad"}">${num(e.g_eval.mean)}</div></div>
+            <div class="metric"><div class="k">Pass rate</div><div class="v ${e.pass_rate >= 0.7 ? "good" : "bad"}">${num(e.pass_rate)}</div></div>
+            <div class="metric"><div class="k">Samples</div><div class="v">${e.sample_count}</div></div>
+          </div>
+          <div class="bars">${critBars}</div>
+          ${claimText ? `<div class="meta" style="margin-top:10px">claims: ${esc(claimText)}</div>` : ""}
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  function renderTable(rows) {
+    $("score-table").innerHTML =
+      `<thead><tr><th>Rank</th><th>Model</th><th>Composite</th><th>Faithfulness</th><th>G-Eval</th><th>Pass rate</th></tr></thead><tbody>` +
+      rows.map((e) => `<tr>
+        <td class="num">#${e.rank}</td>
+        <td><b>${esc(e.model)}</b></td>
+        <td class="num">${num(e.composite_score)}</td>
+        <td class="num">${num(e.faithfulness.mean)}</td>
+        <td class="num">${num(e.g_eval.mean)}</td>
+        <td class="num">${num(e.pass_rate)}</td>
+      </tr>`).join("") + `</tbody>`;
+    $("table-panel").hidden = false;
+  }
+
+  $("load-sample").addEventListener("click", async () => {
+    const res = await fetch("/api/sample");
+    const payload = await res.json();
+    $("samples").value = payload.samples_jsonl;
+    $("error").hidden = true;
+  });
+
+  $("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("run");
+    btn.disabled = true; btn.textContent = "Evaluating…";
+    $("error").hidden = true;
+    try {
+      const res = await fetch("/api/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          samples_jsonl: $("samples").value.trim() || null,
+          faithfulness_threshold: Number($("faith_thresh").value),
+          geval_threshold: Number($("geval_thresh").value),
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || `Request failed (${res.status})`);
+      $("count-meta").textContent =
+        `${payload.sample_count} sample(s) evaluated across ${payload.leaderboard.length} model(s)`;
+      $("count-panel").hidden = false;
+      renderLeaderboard(payload.leaderboard);
+      renderTable(payload.leaderboard);
+      $("raw").textContent = JSON.stringify(payload, null, 2);
+      $("raw-details").hidden = false;
+    } catch (err) {
+      $("error").textContent = err.message;
+      $("error").hidden = false;
+    } finally {
+      btn.disabled = false; btn.textContent = "Run evaluation";
+    }
+  });
+
+  $("form").dispatchEvent(new Event("submit"));
+})();
+</script>
+</body>
+</html>
