@@ -90,3 +90,11 @@ def test_run_eval_serializes_nested_stats():
     result = run_eval(samples_jsonl=SAMPLE)
     json.dumps(result)  # must be JSON-serializable end to end
     assert result["leaderboard"][0]["g_eval"]["mean"] >= 0.0
+
+def test_index_has_accessibility_features(server):
+    """The served page ships skip-link navigation, a main landmark, and reduced-motion guard."""
+    html = urllib.request.urlopen(server + "/").read().decode("utf-8")
+    assert 'class="skip-link"' in html, "missing skip link for keyboard users"
+    assert '<main class="layout">' in html, "missing main landmark"
+    assert 'role="alert"' in html, "error box must announce to assistive tech"
+    assert "prefers-reduced-motion" in html, "missing reduced-motion guard"
