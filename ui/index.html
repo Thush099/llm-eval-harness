@@ -18,6 +18,7 @@
     --accent: #63c7da;
     --mono: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
     --sans: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 var(--sans); }
@@ -45,6 +46,18 @@
   button.primary:hover { background: #4fb3c6; }
   button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
   button:disabled { opacity: .55; cursor: wait; }
+  .spinner {
+    display: inline-block; width: 1em; height: 1em; margin-left: 8px;
+    border: 2px solid var(--rule); border-top-color: var(--ink);
+    border-radius: 50%; vertical-align: -0.15em;
+    animation: spin 0.8s linear infinite;
+  }
+  .spinner[hidden] { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    .spinner { animation: none; }
+  }
+
   .error { margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--bad); background: #2a1c1a; color: var(--bad); font-size: 13px; white-space: pre-wrap; }
 
   .rank-row { display: grid; grid-template-columns: 54px 1fr; gap: 16px; align-items: center;
@@ -109,6 +122,7 @@
 
     <div class="btnrow">
       <button type="submit" class="primary" id="run">Run evaluation</button>
+      <span class="spinner" hidden aria-hidden="true"></span>
     </div>
     <div class="error" id="error" role="alert" hidden></div>
   </form>
@@ -188,6 +202,9 @@
     e.preventDefault();
     const btn = $("run");
     btn.disabled = true; btn.textContent = "Evaluating…";
+    btn.form.setAttribute("aria-busy", "true");
+    const spinner = document.querySelector(".spinner");
+    spinner.hidden = false;
     $("error").hidden = true;
     try {
       const res = await fetch("/api/evaluate", {
@@ -213,6 +230,8 @@
       $("error").hidden = false;
     } finally {
       btn.disabled = false; btn.textContent = "Run evaluation";
+      btn.form.setAttribute("aria-busy", "false");
+      spinner.hidden = true;
     }
   });
 
