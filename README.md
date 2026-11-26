@@ -1,5 +1,7 @@
 # LLM Evaluation Harness
 
+[![CI](https://github.com/Thush099/llm-eval-harness/actions/workflows/tests.yml/badge.svg)](https://github.com/Thush099/llm-eval-harness/actions/workflows/tests.yml)
+
 A modular, deterministic evaluation harness for Large Language Model (LLM) and RAG outputs, featuring claim-level faithfulness verification, configurable G-Eval rubric scoring, and JSON/Markdown leaderboard reporting.
 
 ## Features
