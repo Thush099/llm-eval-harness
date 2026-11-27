@@ -127,3 +127,35 @@ def test_secondary_async_actions_report_failures(server):
     """Sample-loader actions must surface failures, not fail silently."""
     html = urllib.request.urlopen(server + "/").read().decode("utf-8")
     assert "Could not load sample data" in html, "sample loader must report failures to the user"
+
+
+def test_eval_payload_includes_score_distributions(server):
+    """Per-sample score distributions accompany the leaderboard aggregates."""
+    req = urllib.request.Request(
+        server + "/api/evaluate",
+        data=json.dumps({}).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    payload = json.loads(urllib.request.urlopen(req).read())
+    dist = payload["distributions"]
+    assert dist, "distributions must not be empty"
+    by_model = {e["model"]: e for e in payload["leaderboard"]}
+    for model, series in dist.items():
+        assert model in by_model, f"distribution for unknown model {model!r}"
+        faith = series["faithfulness"]
+        assert faith, f"{model}: faithfulness series is empty"
+        expected = by_model[model]["faithfulness"]["mean"]
+        actual = sum(faith) / len(faith)
+        assert abs(actual - expected) < 0.01, (
+            f"{model}: distribution mean {actual:.3f} disagrees with leaderboard mean {expected:.3f}"
+        )
+        assert len(series["g_eval"]) == len(faith), "both judges must cover the same samples"
+        assert series["criteria"], "criterion series expected"
+        for crit, vals in series["criteria"].items():
+            assert len(vals) == len(faith), "criterion series must cover the same samples"
+
+
+def test_index_has_distribution_strips(server):
+    """The leaderboard renders per-judge score distribution strips."""
+    html = urllib.request.urlopen(server + "/").read().decode("utf-8")
+    assert "dist-strip" in html, "missing per-judge distribution strip rendering"
