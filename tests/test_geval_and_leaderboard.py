@@ -12,6 +12,7 @@ from src.models import (
     GEvalResult,
     GEvalScorer,
     LeaderboardGenerator,
+    LocalHeuristicJudgeBackend,
     SampleEvaluation,
 )
 
@@ -242,3 +243,20 @@ def test_json_report_includes_score_distributions() -> None:
     assert dist["alpha"]["criteria"]["coherence"] == [0.9, 0.7]
     assert dist["alpha"]["criteria"]["relevance"] == [pytest.approx(0.8), pytest.approx(0.6)]
     assert "distributions" not in gen.to_dict(entries), "no evaluations → no series"
+
+
+def test_geval_custom_criterion_falls_back_to_overlap_scoring() -> None:
+    """Custom user-defined criteria blend coherence with description coverage;
+    a response with no content tokens scores 0.0."""
+    scorer = LocalHeuristicJudgeBackend()
+    score = scorer.score_criterion(
+        "persuasiveness",
+        "uses persuasive language and rhetoric",
+        question="q",
+        response="persuasive language rhetoric",
+        context=[],
+    )
+    assert 0.0 <= score <= 1.0
+    assert score > 0.5, "strong description coverage should score above the blend midpoint"
+    empty = scorer.score_criterion("persuasiveness", "uses rhetoric", "q", "", [])
+    assert empty == 0.0

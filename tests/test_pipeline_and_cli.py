@@ -137,3 +137,28 @@ def test_exit_code_rejects_invalid_threshold() -> None:
 def test_cli_min_composite_gates_the_run() -> None:
     assert cli_main(["--min-composite", "0.0"]) == 0
     assert cli_main(["--min-composite", "1.0"]) == 1
+
+
+def test_load_data_json_variants_and_boundaries(tmp_path: Path) -> None:
+    """The JSON loader accepts {samples: [...]} wrappers and bare arrays, and
+    rejects malformed JSON and non-list payloads with clear errors."""
+    good = {"model": "m", "question": "q", "context": ["c"], "response": "r"}
+
+    wrapped = tmp_path / "wrapped.json"
+    wrapped.write_text(json.dumps({"samples": [good, dict(good)]}), encoding="utf-8")
+    assert len(load_data(wrapped)) == 2
+
+    array = tmp_path / "array.json"
+    array.write_text(json.dumps([good]), encoding="utf-8")
+    loaded = load_data(array)
+    assert len(loaded) == 1 and loaded[0].model == "m"
+
+    malformed = tmp_path / "bad.json"
+    malformed.write_text("{not json", encoding="utf-8")
+    with pytest.raises(ValueError, match="Malformed JSON"):
+        load_data(malformed)
+
+    not_list = tmp_path / "obj.json"
+    not_list.write_text(json.dumps({"foo": 1}), encoding="utf-8")
+    with pytest.raises(ValueError, match="Expected a JSON array"):
+        load_data(not_list)
