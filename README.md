@@ -1,5 +1,7 @@
 # LLM Evaluation Harness
 
+[![CI](https://github.com/Thush099/llm-eval-harness/actions/workflows/tests.yml/badge.svg)](https://github.com/Thush099/llm-eval-harness/actions/workflows/tests.yml)
+
 A modular, deterministic evaluation harness for Large Language Model (LLM) and RAG outputs, featuring claim-level faithfulness verification, configurable G-Eval rubric scoring, and JSON/Markdown leaderboard reporting.
 
 ## Features
@@ -106,3 +108,16 @@ llm-eval-harness/
 ```bash
 pytest -v
 ```
+
+## Web UI
+
+A local leaderboard drives the real harness in the browser:
+
+```bash
+python ui/server.py            # http://127.0.0.1:8128
+```
+
+Paste evaluation samples as JSONL (or load the bundled set) and score models on claim-level
+faithfulness plus rubric-weighted G-Eval (coherence, relevance, conciseness, completeness),
+with composite scores, pass rates, and a ranked leaderboard. The server uses only the
+standard library and calls `Pipeline.run()`.

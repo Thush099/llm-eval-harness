@@ -12,6 +12,7 @@ from src.models import (
     GEvalResult,
     GEvalScorer,
     LeaderboardGenerator,
+    LocalHeuristicJudgeBackend,
     SampleEvaluation,
 )
 
@@ -209,3 +210,53 @@ def test_leaderboard_aggregation_math_and_exports(tmp_path: Path) -> None:
     assert "| Rank | Model |" in md_text
     assert "| 1 | alpha |" in md_text
     assert "G-Eval Rubric Breakdown" in md_text
+
+
+def test_json_report_includes_score_distributions() -> None:
+    """The JSON report carries the per-sample score series the UI plots as spreads."""
+    gen = LeaderboardGenerator(faithfulness_threshold=0.75, geval_threshold=0.70)
+
+    def make_eval(sample_id: str, faith: float, geval: float) -> SampleEvaluation:
+        return SampleEvaluation(
+            sample_id=sample_id,
+            model="alpha",
+            question="Q?",
+            faithfulness=FaithfulnessResult(
+                score=faith, claims=[], supported_count=1,
+                unsupported_count=0, contradicted_count=0,
+            ),
+            g_eval=GEvalResult(
+                overall_score=geval,
+                criterion_scores={"coherence": geval, "relevance": geval - 0.1},
+                weights={"coherence": 0.5, "relevance": 0.5},
+            ),
+            passed=gen.is_passing(faith, geval),
+        )
+
+    evals = [make_eval("s1", 1.0, 0.9), make_eval("s2", 0.8, 0.7)]
+    entries = gen.aggregate(evals)
+    payload = gen.to_dict(entries, evaluations=evals)
+
+    dist = payload["distributions"]
+    assert dist["alpha"]["faithfulness"] == [1.0, 0.8]
+    assert dist["alpha"]["g_eval"] == [0.9, 0.7]
+    assert dist["alpha"]["criteria"]["coherence"] == [0.9, 0.7]
+    assert dist["alpha"]["criteria"]["relevance"] == [pytest.approx(0.8), pytest.approx(0.6)]
+    assert "distributions" not in gen.to_dict(entries), "no evaluations → no series"
+
+
+def test_geval_custom_criterion_falls_back_to_overlap_scoring() -> None:
+    """Custom user-defined criteria blend coherence with description coverage;
+    a response with no content tokens scores 0.0."""
+    scorer = LocalHeuristicJudgeBackend()
+    score = scorer.score_criterion(
+        "persuasiveness",
+        "uses persuasive language and rhetoric",
+        question="q",
+        response="persuasive language rhetoric",
+        context=[],
+    )
+    assert 0.0 <= score <= 1.0
+    assert score > 0.5, "strong description coverage should score above the blend midpoint"
+    empty = scorer.score_criterion("persuasiveness", "uses rhetoric", "q", "", [])
+    assert empty == 0.0
