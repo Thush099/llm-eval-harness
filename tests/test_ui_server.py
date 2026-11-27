@@ -159,3 +159,10 @@ def test_index_has_distribution_strips(server):
     """The leaderboard renders per-judge score distribution strips."""
     html = urllib.request.urlopen(server + "/").read().decode("utf-8")
     assert "dist-strip" in html, "missing per-judge distribution strip rendering"
+
+
+def test_index_disables_heuristic_caching(server):
+    """The UI shell must not be heuristically cached — stale HTML after edits was
+    observed live because custom do_GET handlers send no cache validators."""
+    resp = urllib.request.urlopen(server + "/")
+    assert resp.headers.get("Cache-Control") == "no-cache"
