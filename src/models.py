@@ -831,6 +831,26 @@ class LeaderboardGenerator:
             entry.rank = rank
         return entries
 
+    @staticmethod
+    def score_distributions(
+        evaluations: Sequence[SampleEvaluation],
+    ) -> Dict[str, Dict[str, Any]]:
+        """Per-model score series: one value per sample for each judge and criterion.
+
+        This is the single source of truth behind both the JSON report's
+        ``distributions`` key and the web UI's spread strips.
+        """
+        distributions: Dict[str, Dict[str, Any]] = {}
+        for ev in evaluations:
+            series = distributions.setdefault(
+                ev.model, {"faithfulness": [], "g_eval": [], "criteria": {}}
+            )
+            series["faithfulness"].append(ev.faithfulness.score)
+            series["g_eval"].append(ev.g_eval.overall_score)
+            for criterion, value in ev.g_eval.criterion_scores.items():
+                series["criteria"].setdefault(criterion, []).append(value)
+        return distributions
+
     def to_dict(
         self,
         entries: Sequence[LeaderboardEntry],
@@ -848,6 +868,7 @@ class LeaderboardGenerator:
         }
         if evaluations is not None:
             payload["samples"] = [ev.to_dict() for ev in evaluations]
+            payload["distributions"] = self.score_distributions(evaluations)
         return payload
 
     def to_json(

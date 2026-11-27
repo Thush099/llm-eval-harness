@@ -64,15 +64,7 @@ def run_eval(
     )
     pipeline = Pipeline(config=config)
     output = pipeline.run(samples)
-    distributions: dict[str, dict[str, Any]] = {}
-    for ev in output.evaluations:
-        series = distributions.setdefault(
-            ev.model, {"faithfulness": [], "g_eval": [], "criteria": {}}
-        )
-        series["faithfulness"].append(ev.faithfulness.score)
-        series["g_eval"].append(ev.g_eval.overall_score)
-        for criterion, value in ev.g_eval.criterion_scores.items():
-            series["criteria"].setdefault(criterion, []).append(value)
+    distributions = pipeline.leaderboard_generator.score_distributions(output.evaluations)
     return {
         "leaderboard": [entry.to_dict() for entry in output.leaderboard],
         "sample_count": len(output.evaluations),
